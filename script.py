@@ -41,14 +41,20 @@ def unzip_gz_files(directory, silent=True):
 
     return success  # True if all/unzipped or already extracted, False if any error occurred
 
-def run_cpu_analysis():
-    if not unzip_gz_files(oswtop_dir, silent=False):
-        print("❌ Failed to unzip files in oswtop_dir.")
-        return False
-    if not unzip_gz_files(oswvmstat_dir, silent=False):
-        print("❌ Failed to unzip files in oswvmstat_dir.")
-        return False
+def prepare_all_archives(base_dir, subdirectories):
+    """
+    Checks and unzips files for all required OSWatcher subdirectories.
+    """
+    print("⏳ Preparing all required archives...")
+    for subdir in subdirectories:
+        full_path = os.path.join(base_dir, subdir)
+        print(f"\n--- Checking '{subdir}' directory ---")
+        unzip_gz_files(full_path, silent=False)
+    print("\n✅ All archives are ready for analysis.")
 
+
+def run_cpu_analysis():
+    
     output_path = os.path.join(archive_dir, "cpu_analysis.txt")
     cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
     threshold_75 = 0.75 * cpu_cores
@@ -61,10 +67,7 @@ def run_cpu_analysis():
 
 
 def run_memory_analysis():
-    if not unzip_gz_files(oswmeminfo_dir, silent=False):
-        print("❌ Failed to unzip files in oswmeminfo_dir.")
-        return False
-
+    
     output_path = os.path.join(archive_dir, "memory_analysis.txt")
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         process_oswmeminfo_files(oswmeminfo_dir)
@@ -74,10 +77,7 @@ def run_memory_analysis():
 
 
 def run_vmstat_analysis():
-    if not unzip_gz_files(oswvmstat_dir, silent=False):
-        print("❌ Failed to unzip files in oswvmstat_dir.")
-        return False
-
+    
     output_path = os.path.join(archive_dir, "vmstat_analysis.txt")
     cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
 
@@ -89,10 +89,7 @@ def run_vmstat_analysis():
 
 
 def run_dstate_analysis():
-    if not unzip_gz_files(oswtop_dir, silent=False):
-        print("❌ Failed to unzip files in oswtop_dir.")
-        return False
-
+    
     output_path = os.path.join(archive_dir, "dstate_and_high_resource_processes.txt")
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         analyze_oswtop_data(oswtop_dir)
@@ -102,10 +99,7 @@ def run_dstate_analysis():
 
 
 def run_disk_analysis():
-    if not unzip_gz_files(oswiostat_dir, silent=False):
-        print("❌ Failed to unzip files in oswiostat_dir.")
-        return False
-
+    
     output_path = os.path.join(archive_dir, "disk_and_iowait_details.txt")
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         analyze_iostat_files(oswiostat_dir)
@@ -115,10 +109,7 @@ def run_disk_analysis():
 
 
 def run_netstat_analysis():
-    if not unzip_gz_files(oswnetstat_dir, silent=False):
-        print("❌ Failed to unzip files in oswnetstat_dir.")
-        return False
-
+    
     output_path = os.path.join(archive_dir, "netstat_details.txt")
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         analyze_netstat_files(oswnetstat_dir)
@@ -691,6 +682,8 @@ if __name__ == "__main__":
    #unzip_gz_files(oswvmstat_dir)
    #unzip_gz_files(oswmeminfo_dir)
    # unzip_gz_files(oswiostat_dir)
+    required_dirs = ["oswtop", "oswvmstat", "oswmeminfo", "oswiostat", "oswnetstat"]
+    prepare_all_archives(archive_dir, required_dirs)
 
     
     while True:
