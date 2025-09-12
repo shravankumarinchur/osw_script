@@ -5,6 +5,33 @@ import re
 import gzip
 import shutil
 import contextlib
+from datetime import datetime
+
+def filter_files_by_timerange(directory, start_str, end_str):
+    """
+    Filters files in the given directory based on the provided start and end timestamps.
+    Expected format: yy.mm.dd.hhmm (e.g., 25.09.08.0100)
+    """
+    def parse_filename(filename):
+        # Extract timestamp part: new-hire-training_top_25.09.08.0100.dat → 25.09.08.0100
+        try:
+            timestamp_str = filename.split("_top_")[-1].replace(".dat", "")
+            return datetime.strptime(timestamp_str, "%y.%m.%d.%H%M")
+        except Exception:
+            return None
+
+    start_dt = datetime.strptime(start_str, "%y.%m.%d.%H%M")
+    end_dt   = datetime.strptime(end_str, "%y.%m.%d.%H%M")
+
+    filtered_files = []
+    for fname in sorted(os.listdir(directory)):
+        if fname.endswith(".dat"):
+            ftime = parse_filename(fname)
+            if ftime and start_dt <= ftime <= end_dt:
+                filtered_files.append(fname)
+
+    return filtered_files
+
 
 def get_oswarchive_path():
     while True:
@@ -211,17 +238,18 @@ def detect_decreasing_load_patterns(load_data, cpu_cores, min_consecutive=6):
     else:
         print("\n✅ No significant decreasing load average patterns detected.")
 
-def process_oswtop_files(directory, cpu_cores, threshold_75):
+def process_oswtop_files(directory, cpu_cores, threshold_75, file_list=None):
     pattern = re.compile(r"^top - (\d{2}:\d{2}:\d{2}) .*load average: ([\d.]+), ([\d.]+), ([\d.]+)")
-
-    highest = None
-    lowest = None
+    highest, lowest = None, None
     load_data = []
 
     print(f"\n========📊 Analyzing Server instances where CPU crossed 75%+ usage=============\n")
-    
     print(f"\n The total cpu cores : {cpu_cores}\n")
-    for filename in sorted(os.listdir(directory)):
+
+    # Either analyze all files or filtered ones
+    files_to_process = file_list if file_list else sorted(os.listdir(directory))
+
+    for filename in files_to_process:
         if filename.endswith(".dat"):
             filepath = os.path.join(directory, filename)
             date = extract_date_from_filename(filename)
@@ -254,6 +282,7 @@ def process_oswtop_files(directory, cpu_cores, threshold_75):
 
     detect_increasing_load_patterns(load_data, cpu_cores, min_consecutive=6)
     detect_decreasing_load_patterns(load_data, cpu_cores, min_consecutive=6)
+
 
 def detect_increasing_memory_patterns(mem_data, min_consecutive=6):
     pattern = []
@@ -696,7 +725,8 @@ if __name__ == "__main__":
         print("5. Analyze Disk and IOwait")
         print("6. Analyze Netstat")
         print("7. Run All Analyses")
-        print("8. Exit")  
+        print("8.custom time")
+        print("9. Exit")  
 
         choice = input("Enter your choice (1-8): ").strip()
 
@@ -721,6 +751,27 @@ if __name__ == "__main__":
             run_disk_analysis()
             run_netstat_analysis()
             print("\n🎯 All analyses completed successfully!")            
+        
         elif choice == "8":
+            print("\n⏳ Enter time range in format yy.mm.dd.hhmm (e.g., 25.09.08.0100)")
+            start_str = input("From: ").strip()
+            end_str   = input("To: ").strip()    
+
+            selected_files = filter_files_by_timerange(oswtop_dir, start_str, end_str)  
+
+            if not selected_files:
+                print("⚠️ No files found in the given range!")
+            else:
+                print(f"✅ Found {len(selected_files)} files in range. Running CPU analysis only...\n")
+                output_path = os.path.join(archive_dir, "cpu_analysis_timerange.txt")
+                cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
+                threshold_75 = 0.75 * cpu_cores
+
+                with open(output_path, "w") as f, contextlib.redirect_stdout(f):
+                    process_oswtop_files(oswtop_dir, cpu_cores, threshold_75, file_list=selected_files)
+
+                print(f"✅ CPU time-range analysis written to: {output_path}")
+           
+        elif choice == "9":
             print("✅✅ Exiting. Goodbye Shravan!")
             break
