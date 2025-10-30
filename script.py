@@ -1,6 +1,3 @@
-#test line
-#added comment
-#added this line in github gui
 import os
 import re
 import gzip
@@ -12,11 +9,12 @@ def filter_files_by_timerange(directory, start_str, end_str):
     """
     Filters files in the given directory based on the provided start and end timestamps.
     Expected format: yy.mm.dd.hhmm (e.g., 25.09.08.0100)
+    Works for oswtop, oswmeminfo, oswiostat, etc.
     """
     def parse_filename(filename):
-        # Extract timestamp part: new-hire-training_top_25.09.08.0100.dat → 25.09.08.0100
         try:
-            timestamp_str = filename.split("_top_")[-1].replace(".dat", "")
+            # Split on last "_" and strip .dat
+            timestamp_str = filename.rsplit("_", 1)[-1].replace(".dat", "")
             return datetime.strptime(timestamp_str, "%y.%m.%d.%H%M")
         except Exception:
             return None
@@ -32,6 +30,7 @@ def filter_files_by_timerange(directory, start_str, end_str):
                 filtered_files.append(fname)
 
     return filtered_files
+
 
 
 def get_oswarchive_path():
@@ -81,66 +80,72 @@ def prepare_all_archives(base_dir, subdirectories):
     print("\n✅ All archives are ready for analysis.")
 
 
-def run_cpu_analysis():
+def run_cpu_analysis(file_list=None, output_suffix=""):
     
-    output_path = os.path.join(archive_dir, "cpu_analysis.txt")
+    output_filename = f"cpu_analysis{output_suffix}.txt"
+    output_path = os.path.join(archive_dir, output_filename)
     cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
     threshold_75 = 0.75 * cpu_cores
 
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
-        process_oswtop_files(oswtop_dir, cpu_cores, threshold_75)
+        process_oswtop_files(oswtop_dir, cpu_cores, threshold_75, file_list)
 
     print(f"✅ CPU analysis written to: {output_path}")
     return True
 
 
-def run_memory_analysis():
+def run_memory_analysis(file_list=None, output_suffix=""):
     
-    output_path = os.path.join(archive_dir, "memory_analysis.txt")
+    output_filename = f"memory_analysis{output_suffix}.txt"
+    output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
-        process_oswmeminfo_files(oswmeminfo_dir)
+        process_oswmeminfo_files(oswmeminfo_dir, file_list)
 
     print(f"✅ Memory analysis written to: {output_path}")
     return True
 
 
-def run_vmstat_analysis():
+def run_vmstat_analysis(file_list=None, output_suffix=""):
     
-    output_path = os.path.join(archive_dir, "vmstat_analysis.txt")
+    output_filename = f"vmstat_analysis{output_suffix}.txt"
+    output_path = os.path.join(archive_dir, output_filename)
     cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
 
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
-        process_oswvmstat_files(oswvmstat_dir, cpu_cores)
+        process_oswvmstat_files(oswvmstat_dir, cpu_cores, file_list)
 
     print(f"✅ vmstat analysis written to: {output_path}")
     return True
 
 
-def run_dstate_analysis():
+def run_dstate_analysis(file_list=None, output_suffix=""):
     
-    output_path = os.path.join(archive_dir, "dstate_and_high_resource_processes.txt")
+    output_filename = f"dstate_and_high_resource_processes{output_suffix}.txt"
+    output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
-        analyze_oswtop_data(oswtop_dir)
+        analyze_oswtop_data(oswtop_dir, file_list)
 
     print(f"✅ D-state and High Resource Process analysis written to: {output_path}")
     return True
 
 
-def run_disk_analysis():
+def run_disk_analysis(file_list=None, output_suffix=""):
     
-    output_path = os.path.join(archive_dir, "disk_and_iowait_details.txt")
+    output_filename = f"disk_and_iowait_details{output_suffix}.txt"
+    output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
-        analyze_iostat_files(oswiostat_dir)
+        analyze_iostat_files(oswiostat_dir, file_list)
 
     print(f"✅ Disk and IOwait analysis written to: {output_path}")
     return True
 
 
-def run_netstat_analysis():
+def run_netstat_analysis(file_list=None, output_suffix=""):
     
-    output_path = os.path.join(archive_dir, "netstat_details.txt")
+    output_filename = f"netstat_details{output_suffix}.txt"
+    output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
-        analyze_netstat_files(oswnetstat_dir)
+        analyze_netstat_files(oswnetstat_dir, file_list)
 
     print(f"✅ Netstat analysis written to: {output_path}")
     return True
@@ -359,19 +364,28 @@ def detect_decreasing_memory_patterns(mem_data, min_consecutive=6):
         print("\n✅ No significant decreasing memory usage patterns detected.")
 
 
-def process_oswmeminfo_files(meminfo_dir):
-    #print("\n========🧠 Analyzing Memory Usage above 75%=========\n")
 
-    highest = None
-    lowest = None
+def process_oswmeminfo_files(meminfo_dir, file_list=None):
+    highest, lowest = None, None
     total_gb = None
     printed_total = False
     mem_data = []
     found_above_75 = False
 
-    for filename in sorted(os.listdir(meminfo_dir)):
+    print("\n========🧠 Analyzing Memory Usage above 75% =========\n")
+
+    # Either analyze all files or only the filtered ones
+    #if file_list:
+       # files_to_process = file_list
+    #else:
+       # files_to_process = sorted(os.listdir(meminfo_dir))
+
+    files_to_process = file_list if file_list else sorted(os.listdir(meminfo_dir))
+
+    for filename in files_to_process:
         if filename.endswith(".dat"):
             filepath = os.path.join(meminfo_dir, filename)
+
             with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
                 timestamp = None
                 values = {}
@@ -397,13 +411,14 @@ def process_oswmeminfo_files(meminfo_dir):
                                 if not printed_total:
                                     print(f"💾 Total Memory on Server: {total_gb:.2f} GB\n")
                                     printed_total = True
-                                    print("\n========🧠  Analyzing Memory Usage above 75%=========\n")
 
                                 if used_pct > 75:
                                     found_above_75 = True
-                                    print(f"{timestamp} | Used: {used_pct:.2f}% ({used_gb:.2f} GB), Free: {free_pct:.2f}% ({free_gb:.2f} GB) | File: {filename}")
+                                    print(f"{timestamp} | Used: {used_pct:.2f}% "
+                                          f"({used_gb:.2f} GB), Free: {free_pct:.2f}% "
+                                          f"({free_gb:.2f} GB) | File: {filename}")
 
-                                mem_data.append((timestamp, used_pct, used_gb, free_gb, filename))
+                                mem_data.append((timestamp, used_pct, used_gb, free_gb))
 
                                 if highest is None or used_pct > highest[0]:
                                     highest = (used_pct, timestamp, used_gb, free_gb, filename)
@@ -423,6 +438,7 @@ def process_oswmeminfo_files(meminfo_dir):
                             val = parts[1]
                             if key in ["MemTotal", "MemFree", "Buffers", "Cached"]:
                                 values[key] = val
+
     if not found_above_75:
         print("No occurrences found where memory usage > 75%.")
 
@@ -430,23 +446,28 @@ def process_oswmeminfo_files(meminfo_dir):
         print(f"\n======= 🔺 Peak Memory Usage Summary 🔺 =======")
         print(f"Filename: {highest[4]}")
         print(f"Timestamp: {highest[1]}")
-        print(f"Used: {highest[0]:.2f}% ({highest[2]:.2f} GB), Free: {100 - highest[0]:.2f}% ({highest[3]:.2f} GB)")
+        print(f"Used: {highest[0]:.2f}% ({highest[2]:.2f} GB), "
+              f"Free: {100 - highest[0]:.2f}% ({highest[3]:.2f} GB)")
 
     if lowest:
         print(f"\n======= 🔻 Lowest Memory Usage Summary 🔻 =======")
         print(f"Filename: {lowest[4]}")
         print(f"Timestamp: {lowest[1]}")
-        print(f"Used: {lowest[0]:.2f}% ({lowest[2]:.2f} GB), Free: {100 - lowest[0]:.2f}% ({lowest[3]:.2f} GB)")
+        print(f"Used: {lowest[0]:.2f}% ({lowest[2]:.2f} GB), "
+              f"Free: {100 - lowest[0]:.2f}% ({lowest[3]:.2f} GB)")
 
     detect_increasing_memory_patterns(mem_data, min_consecutive=6)
     detect_decreasing_memory_patterns(mem_data, min_consecutive=6)
 
-def process_oswvmstat_files(vmstat_dir, cpu_cores):
+
+def process_oswvmstat_files(vmstat_dir, cpu_cores, file_list=None):
     print("\n========⚙️ Analyzing vmstat output where 'r' > CPU cores ========\n")
 
     r_exceeds = []
+    
+    files_to_process = file_list if file_list else sorted(os.listdir(vmstat_dir))
 
-    for filename in sorted(os.listdir(vmstat_dir)):
+    for filename in files_to_process:
         if filename.endswith(".dat"):
             filepath = os.path.join(vmstat_dir, filename)
             timestamp = None
@@ -477,7 +498,7 @@ def process_oswvmstat_files(vmstat_dir, cpu_cores):
 
 
 
-def analyze_oswtop_data(oswtop_dir):
+def analyze_oswtop_data(oswtop_dir, file_list=None):
     print("analysing the D state processes.") 
     timestamp_header_pattern = re.compile(r'^zzz \*\*\*(.*?)$')
 
@@ -486,63 +507,66 @@ def analyze_oswtop_data(oswtop_dir):
         r'^\s*(\d+)\s+(\S+)\s+\d+\s+\S+\s+\S+\s+\S+\s+\S+\s+([RSDZTW])\s+([\d.]+)\s+([\d.]+)\s+[\d:.]+\s+(.+)$'
     )
 
-    for root, _, files in os.walk(oswtop_dir):
-        for file in sorted(files):
-            filepath = os.path.join(root, file)
-            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
+    files_to_process = file_list if file_list else sorted(os.listdir(oswtop_dir))
+    
+    for file in files_to_process:
+        filepath = os.path.join(oswtop_dir, file)
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
 
-            current_timestamp = None
-            process_list = []
+        current_timestamp = None
+        process_list = []
 
-            for line in lines:
-                line = line.strip()
+        for line in lines:
+            line = line.strip()
 
-                match_ts = timestamp_header_pattern.match(line)
-                if match_ts:
-                    if current_timestamp and process_list:
-                        d_processes = [proc for proc in process_list if proc['state'] == 'D']
-                        if d_processes:
-                            print(f"\n[{current_timestamp}] D-state Processes (Count: {len(d_processes)}):")
-                            for proc in d_processes:
-                                print(f"PID={proc['pid']}, USER={proc['user']}, STATE={proc['state']}, CPU={proc['cpu']}%, MEM={proc['mem']}%, CMD={proc['cmd']}")
-                    current_timestamp = match_ts.group(1)
-                    process_list = []
-                    continue
+            match_ts = timestamp_header_pattern.match(line)
+            if match_ts:
+                if current_timestamp and process_list:
+                    d_processes = [proc for proc in process_list if proc['state'] == 'D']
+                    if d_processes:
+                        print(f"\n[{current_timestamp}] D-state Processes (Count: {len(d_processes)}):")
+                        for proc in d_processes:
+                            print(f"PID={proc['pid']}, USER={proc['user']}, STATE={proc['state']}, CPU={proc['cpu']}%, MEM={proc['mem']}%, CMD={proc['cmd']}")
+                current_timestamp = match_ts.group(1)
+                process_list = []
+                continue
 
-                match_proc = process_line_pattern.match(line)
-                if match_proc:
-                    proc_info = {
-                        'pid': match_proc.group(1),
-                        'user': match_proc.group(2),
-                        'state': match_proc.group(3),
-                        'cpu': float(match_proc.group(4)),
-                        'mem': float(match_proc.group(5)),
-                        'cmd': match_proc.group(6)
-                    }
-                    process_list.append(proc_info)
+            match_proc = process_line_pattern.match(line)
+            if match_proc:
+                proc_info = {
+                    'pid': match_proc.group(1),
+                    'user': match_proc.group(2),
+                    'state': match_proc.group(3),
+                    'cpu': float(match_proc.group(4)),
+                    'mem': float(match_proc.group(5)),
+                    'cmd': match_proc.group(6)
+                }
+                process_list.append(proc_info)
 
-            # Final block for last timestamp
-            if current_timestamp and process_list:
-                d_processes = [proc for proc in process_list if proc['state'] == 'D']
-                if d_processes:
-                    print(f"\n[{current_timestamp}] D-state Processes (Count: {len(d_processes)}):")
-                    for proc in d_processes:
-                        print(f"PID={proc['pid']}, USER={proc['user']}, STATE={proc['state']}, CPU={proc['cpu']}%, MEM={proc['mem']}%, CMD={proc['cmd']}")
-
-
-
+        # Final block for last timestamp
+        if current_timestamp and process_list:
+            d_processes = [proc for proc in process_list if proc['state'] == 'D']
+            if d_processes:
+                print(f"\n[{current_timestamp}] D-state Processes (Count: {len(d_processes)}):")
+                for proc in d_processes:
+                    print(f"PID={proc['pid']}, USER={proc['user']}, STATE={proc['state']}, CPU={proc['cpu']}%, MEM={proc['mem']}%, CMD={proc['cmd']}")
 
 
 
-def analyze_iostat_files(directory):
+
+
+
+def analyze_iostat_files(directory, file_list=None):
     iowait_records = []  # To store tuples (timestamp, iowait)
     high_util_disks = []  # To store tuples (timestamp, disk, read_MBps, write_MBps, util%)
     
     def kb_to_mb(kb):
         return kb / 1024.0
     
-    for filename in sorted(os.listdir(directory)):
+    files_to_process = file_list if file_list else sorted(os.listdir(directory))
+    
+    for filename in files_to_process:
         if not filename.endswith(".dat"):
             continue
         filepath = os.path.join(directory, filename)
@@ -608,11 +632,13 @@ def analyze_iostat_files(directory):
         print(f"{ts} - Device: {dev}, Read: {r_mb:.2f} MB/s, Write: {w_mb:.2f} MB/s, Utilization: {util:.2f}%")
 
 
-def analyze_netstat_files(directory):
+def analyze_netstat_files(directory, file_list=None):
     packet_drop_records = []  # (timestamp, interface, direction, drops)
     error_records = []        # (timestamp, interface, direction, errors)
 
-    for filename in sorted(os.listdir(directory)):
+    files_to_process = file_list if file_list else sorted(os.listdir(directory))
+    
+    for filename in files_to_process:
         if not filename.endswith(".dat"):
             continue
 
@@ -669,14 +695,14 @@ def analyze_netstat_files(directory):
                         continue
 
     # ---------- DROP ANALYSIS ----------
-    print("\n📦 Top 10 Packet Drops (All):")
+    print("\n Top 10 Packet Drops (All):")
     if packet_drop_records:
         for ts, iface, direction, drops in sorted(packet_drop_records, key=lambda x: x[3], reverse=True)[:10]:
             print(f"{ts} - Interface: {iface} [{direction}], Drops: {drops:.0f}")
     else:
         print("No packet drops recorded.")
 
-    print("\n📦 Top 10 Unique Packet Drop Values:")
+    print("\n Top 10 Unique Packet Drop Values:")
     unique_drops = {}
     for ts, iface, direction, drops in packet_drop_records:
         if drops not in unique_drops:
@@ -685,14 +711,14 @@ def analyze_netstat_files(directory):
         print(f"{ts} - Interface: {iface} [{direction}], Drops: {drops:.0f}")
 
     # ---------- ERROR ANALYSIS ----------
-    print("\n❌ Top 10 Packet Errors (All):")
+    print("\n Top 10 Packet Errors (All):")
     if error_records:
         for ts, iface, direction, errors in sorted(error_records, key=lambda x: x[3], reverse=True)[:10]:
             print(f"{ts} - Interface: {iface} [{direction}], Errors: {errors:.0f}")
     else:
         print("No packet errors recorded.")
 
-    print("\n❌ Top 10 Unique Packet Error Values:")
+    print("\n Top 10 Unique Packet Error Values:")
     unique_errors = {}
     for ts, iface, direction, errors in error_records:
         if errors not in unique_errors:
@@ -726,10 +752,10 @@ if __name__ == "__main__":
         print("5. Analyze Disk and IOwait")
         print("6. Analyze Netstat")
         print("7. Run All Analyses")
-        print("8.custom time")
+        print("8. Custom Time Range Analysis (any analysis type)")
         print("9. Exit")  
 
-        choice = input("Enter your choice (1-8): ").strip()
+        choice = input("Enter your choice (1-9): ").strip()
 
         if choice == "1":
             run_cpu_analysis()
@@ -744,35 +770,127 @@ if __name__ == "__main__":
         elif choice == "6":
             run_netstat_analysis()
         elif choice == "7":
-            print("\n🚀  Running All Analyses...\n")
+            print("\n  Running All Analyses...\n")
             run_cpu_analysis()
             run_memory_analysis()
             run_vmstat_analysis()
             run_dstate_analysis()
             run_disk_analysis()
             run_netstat_analysis()
-            print("\n🎯 All analyses completed successfully!")            
+            print("\n All analyses completed successfully!")            
         
         elif choice == "8":
-            print("\n⏳ Enter time range in format yy.mm.dd.hhmm (e.g., 25.09.08.0100)")
+            print("\n========== Custom Time Range Analysis ==========")
+            print("Select analysis type for time range:")
+            print("1. CPU only")
+            print("2. Memory only")
+            print("3. VMStat only")
+            print("4. D-state Processes only")
+            print("5. Disk and IOwait only")
+            print("6. Netstat only")
+            print("7. All analyses (CPU, Memory, VMStat, D-state, Disk, Netstat)")
+            
+            analysis_choice = input("\nEnter analysis type (1-7): ").strip()
+            
+            if analysis_choice not in ["1", "2", "3", "4", "5", "6", "7"]:
+                print("Invalid choice. Skipping custom time range analysis.")
+                continue
+            
+            print("\n Enter time range in format yy.mm.dd.hhmm (e.g., 25.09.08.0100)")
             start_str = input("From: ").strip()
-            end_str   = input("To: ").strip()    
+            end_str   = input("To: ").strip()
 
-            selected_files = filter_files_by_timerange(oswtop_dir, start_str, end_str)  
-
-            if not selected_files:
-                print("⚠️ No files found in the given range!")
-            else:
-                print(f"✅ Found {len(selected_files)} files in range. Running CPU analysis only...\n")
-                output_path = os.path.join(archive_dir, "cpu_analysis_timerange.txt")
-                cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
-                threshold_75 = 0.75 * cpu_cores
-
-                with open(output_path, "w") as f, contextlib.redirect_stdout(f):
-                    process_oswtop_files(oswtop_dir, cpu_cores, threshold_75, file_list=selected_files)
-
-                print(f"✅ CPU time-range analysis written to: {output_path}")
+            # Filter files based on type
+            selected_files_cpu = filter_files_by_timerange(oswtop_dir, start_str, end_str)
+            selected_files_memory = filter_files_by_timerange(oswmeminfo_dir, start_str, end_str)
+            selected_files_vmstat = filter_files_by_timerange(oswvmstat_dir, start_str, end_str)
+            selected_files_disk = filter_files_by_timerange(oswiostat_dir, start_str, end_str)
+            selected_files_netstat = filter_files_by_timerange(oswnetstat_dir, start_str, end_str)
+            
+            output_suffix = "_timerange"
+            
+            # Execute based on user choice
+            if analysis_choice == "1":  # CPU only
+                if selected_files_cpu:
+                    run_cpu_analysis(selected_files_cpu, output_suffix)
+                else:
+                    print("No CPU files found in the given range.")
+                    
+            elif analysis_choice == "2":  # Memory only
+                if selected_files_memory:
+                    run_memory_analysis(selected_files_memory, output_suffix)
+                else:
+                    print("No Memory files found in the given range.")
+                    
+            elif analysis_choice == "3":  # VMStat only
+                if selected_files_vmstat:
+                    run_vmstat_analysis(selected_files_vmstat, output_suffix)
+                else:
+                    print("No VMStat files found in the given range.")
+                    
+            elif analysis_choice == "4":  # D-state only
+                if selected_files_cpu:
+                    run_dstate_analysis(selected_files_cpu, output_suffix)
+                else:
+                    print("No OSWtop files found in the given range for D-state analysis.")
+                    
+            elif analysis_choice == "5":  # Disk only
+                if selected_files_disk:
+                    run_disk_analysis(selected_files_disk, output_suffix)
+                else:
+                    print("No Disk (iostat) files found in the given range.")
+                    
+            elif analysis_choice == "6":  # Netstat only
+                if selected_files_netstat:
+                    run_netstat_analysis(selected_files_netstat, output_suffix)
+                else:
+                    print("No Netstat files found in the given range.")
+                    
+            elif analysis_choice == "7":  # All analyses
+                print("\n🚀 Running all analyses for custom time range...\n")
+                analyses_run = False
+                
+                if selected_files_cpu:
+                    run_cpu_analysis(selected_files_cpu, output_suffix)
+                    analyses_run = True
+                else:
+                    print("⚠️  No CPU files found in the given range.")
+                    
+                if selected_files_memory:
+                    run_memory_analysis(selected_files_memory, output_suffix)
+                    analyses_run = True
+                else:
+                    print("⚠️  No Memory files found in the given range.")
+                    
+                if selected_files_vmstat:
+                    run_vmstat_analysis(selected_files_vmstat, output_suffix)
+                    analyses_run = True
+                else:
+                    print("⚠️  No VMStat files found in the given range.")
+                    
+                if selected_files_cpu:
+                    run_dstate_analysis(selected_files_cpu, output_suffix)
+                    analyses_run = True
+                else:
+                    print("⚠️  No OSWtop files found in the given range for D-state analysis.")
+                    
+                if selected_files_disk:
+                    run_disk_analysis(selected_files_disk, output_suffix)
+                    analyses_run = True
+                else:
+                    print("⚠️  No Disk (iostat) files found in the given range.")
+                    
+                if selected_files_netstat:
+                    run_netstat_analysis(selected_files_netstat, output_suffix)
+                    analyses_run = True
+                else:
+                    print("⚠️  No Netstat files found in the given range.")
+                
+                if analyses_run:
+                    print("\n✅ All time-range analyses completed successfully!")
+                else:
+                    print("\n❌ No files found in the given time range for any analysis type.")
            
         elif choice == "9":
-            print("✅✅ Exiting. Goodbye Shravan!")
+            print(" Exiting.")
             break
