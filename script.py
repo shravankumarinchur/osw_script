@@ -46,7 +46,7 @@ def unzip_gz_files(directory, silent=True):
         files = os.listdir(directory)
     except Exception as e:
         if not silent:
-            print(f"⚠️ Error accessing directory '{directory}': {e}")
+            print(f"Error accessing directory '{directory}': {e}")
         return False  # Signal failure to calling function
 
     success = True
@@ -63,7 +63,7 @@ def unzip_gz_files(directory, silent=True):
                             shutil.copyfileobj(f_in, f_out)
                     os.remove(gz_path)
                 except Exception as e:
-                    print(f"❌ Error unzipping {file}: {e}")
+                    print(f"Error unzipping {file}: {e}")
                     success = False  # One file failed, still keep going
 
     return success  # True if all/unzipped or already extracted, False if any error occurred
@@ -72,12 +72,12 @@ def prepare_all_archives(base_dir, subdirectories):
     """
     Checks and unzips files for all required OSWatcher subdirectories.
     """
-    print("⏳ Preparing all required archives...")
+    print("Preparing all required archives...")
     for subdir in subdirectories:
         full_path = os.path.join(base_dir, subdir)
         print(f"\n--- Checking '{subdir}' directory ---")
         unzip_gz_files(full_path, silent=False)
-    print("\n✅ All archives are ready for analysis.")
+    print("\nAll archives are ready for analysis.")
 
 
 def run_cpu_analysis(file_list=None, output_suffix=""):
@@ -90,7 +90,7 @@ def run_cpu_analysis(file_list=None, output_suffix=""):
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         process_oswtop_files(oswtop_dir, cpu_cores, threshold_75, file_list)
 
-    print(f"✅ CPU analysis written to: {output_path}")
+    print(f"CPU analysis written to: {output_path}")
     return True
 
 
@@ -101,7 +101,7 @@ def run_memory_analysis(file_list=None, output_suffix=""):
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         process_oswmeminfo_files(oswmeminfo_dir, file_list)
 
-    print(f"✅ Memory analysis written to: {output_path}")
+    print(f"Memory analysis written to: {output_path}")
     return True
 
 
@@ -114,7 +114,7 @@ def run_vmstat_analysis(file_list=None, output_suffix=""):
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         process_oswvmstat_files(oswvmstat_dir, cpu_cores, file_list)
 
-    print(f"✅ vmstat analysis written to: {output_path}")
+    print(f"vmstat analysis written to: {output_path}")
     return True
 
 
@@ -125,7 +125,7 @@ def run_dstate_analysis(file_list=None, output_suffix=""):
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         analyze_oswtop_data(oswtop_dir, file_list)
 
-    print(f"✅ D-state and High Resource Process analysis written to: {output_path}")
+    print(f"D-state and High Resource Process analysis written to: {output_path}")
     return True
 
 
@@ -136,7 +136,7 @@ def run_disk_analysis(file_list=None, output_suffix=""):
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         analyze_iostat_files(oswiostat_dir, file_list)
 
-    print(f"✅ Disk and IOwait analysis written to: {output_path}")
+    print(f"Disk and IOwait analysis written to: {output_path}")
     return True
 
 
@@ -147,7 +147,7 @@ def run_netstat_analysis(file_list=None, output_suffix=""):
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
         analyze_netstat_files(oswnetstat_dir, file_list)
 
-    print(f"✅ Netstat analysis written to: {output_path}")
+    print(f"Netstat analysis written to: {output_path}")
     return True
 
 def get_cpu_cores_from_vmstat(vmstat_dir):
@@ -160,7 +160,7 @@ def get_cpu_cores_from_vmstat(vmstat_dir):
                     if line.startswith("VCPUS"):
                         try:
                             cores = int(line.strip().split()[1])
-                            print(f"\n🧠 Detected CPU Cores (VCPUS): {cores}")
+                            print(f"\nDetected CPU Cores (VCPUS): {cores}")
                             return cores
                         except (IndexError, ValueError):
                             pass
@@ -201,9 +201,9 @@ def detect_increasing_load_patterns(load_data, cpu_cores, min_consecutive=6):
         increasing_patterns.append(temp_pattern)
 
     if increasing_patterns:
-        print("\n=== 📈 Detected Increasing Load Average Patterns (5+ consecutive) ===")
+        print("\n=== Detected Increasing Load Average Patterns (5+ consecutive) ===")
         for pattern in increasing_patterns:
-            print("📈 Pattern Detected:")
+            print("Pattern Detected:")
             for time_val, date_val, load in pattern:
                 print(f"  [{date_val} {time_val}] Load: {load:.2f}")
             print("-" * 40)
@@ -235,21 +235,21 @@ def detect_decreasing_load_patterns(load_data, cpu_cores, min_consecutive=6):
         decreasing_patterns.append(temp_pattern)
 
     if decreasing_patterns:
-        print("\n=== 📉 Detected Decreasing Load Average Patterns (6+ consecutive) ===")
+        print("\n=== Detected Decreasing Load Average Patterns (6+ consecutive) ===")
         for pattern in decreasing_patterns:
-            print("📉 Decreasing Pattern Detected:")
+            print("Decreasing Pattern Detected:")
             for time_val, date_val, load in pattern:
                 print(f"  [{date_val} {time_val}] Load: {load:.2f}")
             print("-" * 40)
     else:
-        print("\n✅ No significant decreasing load average patterns detected.")
+        print("\nNo significant decreasing load average patterns detected.")
 
 def process_oswtop_files(directory, cpu_cores, threshold_75, file_list=None):
     pattern = re.compile(r"^top - (\d{2}:\d{2}:\d{2}) .*load average: ([\d.]+), ([\d.]+), ([\d.]+)")
     highest, lowest = None, None
     load_data = []
 
-    print(f"\n========📊 Analyzing Server instances where CPU crossed 75%+ usage=============\n")
+    print(f"\n======== Analyzing Server instances where CPU crossed 75%+ usage=============\n")
     print(f"\n The total cpu cores : {cpu_cores}\n")
 
     # Either analyze all files or filtered ones
@@ -279,11 +279,11 @@ def process_oswtop_files(directory, cpu_cores, threshold_75, file_list=None):
                             lowest = (load_avg_1, timestamp, date, filename)
 
     if highest:
-        print(f"\n=======🔺 Peak Load Summary 🔺 =======\n"
+        print(f"\n======= Peak Load Summary =======\n"
               f"Filename: {highest[3]}\nDate: {highest[2]}\nTime: {highest[1]}\nPeak Load Avg: {highest[0]}\n")
 
     if lowest:
-        print(f"\n======= 🔻 Lowest Load Summary 🔻 =======\n"
+        print(f"\n======= Lowest Load Summary =======\n"
               f"Filename: {lowest[3]}\nDate: {lowest[2]}\nTime: {lowest[1]}\nLowest Load Avg: {lowest[0]}\n")
 
     detect_increasing_load_patterns(load_data, cpu_cores, min_consecutive=6)
@@ -319,9 +319,9 @@ def detect_increasing_memory_patterns(mem_data, min_consecutive=6):
         increasing_patterns.append(pattern)
 
     if increasing_patterns:
-        print("\n=== 📈 Detected Increasing Memory Usage Patterns (5+ consecutive) ===")
+        print("\n=== Detected Increasing Memory Usage Patterns (5+ consecutive) ===")
         for p in increasing_patterns:
-            print("📈 Pattern Detected:")
+            print("Pattern Detected:")
             for entry in p:
                 ts, used_pct, used_gb, free_gb = entry
                 print(f"  [{ts}] Used: {used_pct:.2f}% ({used_gb:.2f} GB), Free: {free_gb:.2f} GB")
@@ -353,15 +353,15 @@ def detect_decreasing_memory_patterns(mem_data, min_consecutive=6):
         decreasing_patterns.append(pattern)
 
     if decreasing_patterns:
-        print("\n=== 📉 Detected Decreasing Memory Usage Patterns (6+ consecutive) ===")
+        print("\n=== Detected Decreasing Memory Usage Patterns (6+ consecutive) ===")
         for p in decreasing_patterns:
-            print("📉 Pattern Detected:")
+            print("Pattern Detected:")
             for entry in p:
                 ts, used_pct, used_gb, free_gb = entry
                 print(f"  [{ts}] Used: {used_pct:.2f}% ({used_gb:.2f} GB), Free: {free_gb:.2f} GB")
             print("-" * 40)
     else:
-        print("\n✅ No significant decreasing memory usage patterns detected.")
+        print("\nNo significant decreasing memory usage patterns detected.")
 
 
 
@@ -372,7 +372,7 @@ def process_oswmeminfo_files(meminfo_dir, file_list=None):
     mem_data = []
     found_above_75 = False
 
-    print("\n========🧠 Analyzing Memory Usage above 75% =========\n")
+    print("\n======== Analyzing Memory Usage above 75% =========\n")
 
     # Either analyze all files or only the filtered ones
     #if file_list:
@@ -409,7 +409,7 @@ def process_oswmeminfo_files(meminfo_dir, file_list=None):
                                 free_gb = free_mem_kb / (1024 * 1024)
 
                                 if not printed_total:
-                                    print(f"💾 Total Memory on Server: {total_gb:.2f} GB\n")
+                                    print(f"Total Memory on Server: {total_gb:.2f} GB\n")
                                     printed_total = True
 
                                 if used_pct > 75:
@@ -443,14 +443,14 @@ def process_oswmeminfo_files(meminfo_dir, file_list=None):
         print("No occurrences found where memory usage > 75%.")
 
     if highest:
-        print(f"\n======= 🔺 Peak Memory Usage Summary 🔺 =======")
+        print(f"\n======= Peak Memory Usage Summary =======")
         print(f"Filename: {highest[4]}")
         print(f"Timestamp: {highest[1]}")
         print(f"Used: {highest[0]:.2f}% ({highest[2]:.2f} GB), "
               f"Free: {100 - highest[0]:.2f}% ({highest[3]:.2f} GB)")
 
     if lowest:
-        print(f"\n======= 🔻 Lowest Memory Usage Summary 🔻 =======")
+        print(f"\n======= Lowest Memory Usage Summary =======")
         print(f"Filename: {lowest[4]}")
         print(f"Timestamp: {lowest[1]}")
         print(f"Used: {lowest[0]:.2f}% ({lowest[2]:.2f} GB), "
@@ -461,7 +461,7 @@ def process_oswmeminfo_files(meminfo_dir, file_list=None):
 
 
 def process_oswvmstat_files(vmstat_dir, cpu_cores, file_list=None):
-    print("\n========⚙️ Analyzing vmstat output where 'r' > CPU cores ========\n")
+    print("\n======== Analyzing vmstat output where 'r' > CPU cores ========\n")
 
     r_exceeds = []
     
@@ -487,12 +487,12 @@ def process_oswvmstat_files(vmstat_dir, cpu_cores, file_list=None):
                                 continue
 
     if r_exceeds:
-        print("⚠️  Detected times where 'r' (running processes) > CPU cores:\n")
+        print("Detected times where 'r' (running processes) > CPU cores:\n")
         for ts, r, b in r_exceeds:
             print(f"  [{ts}] r = {r}, b = {b}")
-        print(f"\n🔍 Total occurrences: {len(r_exceeds)}")
+        print(f"\nTotal occurrences: {len(r_exceeds)}")
     else:
-        print("✅ No 'r' values exceeding CPU cores detected.")
+        print("No 'r' values exceeding CPU cores detected.")
 
 
 
@@ -622,8 +622,8 @@ def analyze_iostat_files(directory, file_list=None):
                         high_util_disks.append((timestamp, device, read_MBps, write_MBps, util))
     
     # Print top 20 iowait values
-    print("Top 20 highest iowait values:")
-    for ts, io in sorted(iowait_records, key=lambda x: x[1], reverse=True)[:20]:
+    print("Top 30 highest iowait values:")
+    for ts, io in sorted(iowait_records, key=lambda x: x[1], reverse=True)[:30]:
         print(f"{ts} - iowait: {io:.2f}%")
     
     # Print high-utilization disks
@@ -745,31 +745,13 @@ if __name__ == "__main__":
     while True:
         
         print("\n========== OSWatcher Analysis Menu ==========")
-        print("1. Check CPU performance only")
-        print("2. Check Memory performance only")
-        print("3. Check vmstat")
-        print("4. Analyze D-state and High CPU/Memory Processes")
-        print("5. Analyze Disk and IOwait")
-        print("6. Analyze Netstat")
-        print("7. Run All Analyses")
-        print("8. Custom Time Range Analysis (any analysis type)")
-        print("9. Exit")  
+        print("1. Run All Analyses")
+        print("2. Custom Time Range Analysis (any analysis type)")
+        print("3. Exit")  
 
-        choice = input("Enter your choice (1-9): ").strip()
+        choice = input("Enter your choice (1-3): ").strip()
 
         if choice == "1":
-            run_cpu_analysis()
-        elif choice == "2":
-            run_memory_analysis()
-        elif choice == "3":
-            run_vmstat_analysis()
-        elif choice == "4":
-            run_dstate_analysis() 
-        elif choice == "5":
-            run_disk_analysis()
-        elif choice == "6":
-            run_netstat_analysis()
-        elif choice == "7":
             print("\n  Running All Analyses...\n")
             run_cpu_analysis()
             run_memory_analysis()
@@ -779,23 +761,10 @@ if __name__ == "__main__":
             run_netstat_analysis()
             print("\n All analyses completed successfully!")            
         
-        elif choice == "8":
+        elif choice == "2":
             print("\n========== Custom Time Range Analysis ==========")
             print("Select analysis type for time range:")
-            print("1. CPU only")
-            print("2. Memory only")
-            print("3. VMStat only")
-            print("4. D-state Processes only")
-            print("5. Disk and IOwait only")
-            print("6. Netstat only")
-            print("7. All analyses (CPU, Memory, VMStat, D-state, Disk, Netstat)")
-            
-            analysis_choice = input("\nEnter analysis type (1-7): ").strip()
-            
-            if analysis_choice not in ["1", "2", "3", "4", "5", "6", "7"]:
-                print("Invalid choice. Skipping custom time range analysis.")
-                continue
-            
+        
             print("\n Enter time range in format yy.mm.dd.hhmm (e.g., 25.09.08.0100)")
             start_str = input("From: ").strip()
             end_str   = input("To: ").strip()
@@ -810,87 +779,51 @@ if __name__ == "__main__":
             output_suffix = "_timerange"
             
             # Execute based on user choice
-            if analysis_choice == "1":  # CPU only
-                if selected_files_cpu:
-                    run_cpu_analysis(selected_files_cpu, output_suffix)
-                else:
-                    print("No CPU files found in the given range.")
+            
+            print("\nRunning all analyses for custom time range...\n")
+            analyses_run = False
                     
-            elif analysis_choice == "2":  # Memory only
-                if selected_files_memory:
-                    run_memory_analysis(selected_files_memory, output_suffix)
-                else:
-                    print("No Memory files found in the given range.")
+            if selected_files_cpu:
+                 run_cpu_analysis(selected_files_cpu, output_suffix)
+                 analyses_run = True
+            else:
+                print("No CPU files found in the given range.")
+                        
+            if selected_files_memory:
+                 run_memory_analysis(selected_files_memory, output_suffix)
+                 analyses_run = True
+            else:
+                 print("No Memory files found in the given range.")
+                        
+            if selected_files_vmstat:
+                 run_vmstat_analysis(selected_files_vmstat, output_suffix)
+                 analyses_run = True
+            else:
+                 print("No VMStat files found in the given range.")
+                        
+            if selected_files_cpu:
+                     run_dstate_analysis(selected_files_cpu, output_suffix)
+                     analyses_run = True
+            else:
+                print("No OSWtop files found in the given range for D-state analysis.")
+                        
+            if selected_files_disk:
+                        run_disk_analysis(selected_files_disk, output_suffix)
+                        analyses_run = True
+            else:
+                 print("No Disk (iostat) files found in the given range.")
+                        
+            if selected_files_netstat:
+                      run_netstat_analysis(selected_files_netstat, output_suffix)
+                      analyses_run = True
+            else:
+                 print("No Netstat files found in the given range.")
                     
-            elif analysis_choice == "3":  # VMStat only
-                if selected_files_vmstat:
-                    run_vmstat_analysis(selected_files_vmstat, output_suffix)
-                else:
-                    print("No VMStat files found in the given range.")
-                    
-            elif analysis_choice == "4":  # D-state only
-                if selected_files_cpu:
-                    run_dstate_analysis(selected_files_cpu, output_suffix)
-                else:
-                    print("No OSWtop files found in the given range for D-state analysis.")
-                    
-            elif analysis_choice == "5":  # Disk only
-                if selected_files_disk:
-                    run_disk_analysis(selected_files_disk, output_suffix)
-                else:
-                    print("No Disk (iostat) files found in the given range.")
-                    
-            elif analysis_choice == "6":  # Netstat only
-                if selected_files_netstat:
-                    run_netstat_analysis(selected_files_netstat, output_suffix)
-                else:
-                    print("No Netstat files found in the given range.")
-                    
-            elif analysis_choice == "7":  # All analyses
-                print("\n🚀 Running all analyses for custom time range...\n")
-                analyses_run = False
-                
-                if selected_files_cpu:
-                    run_cpu_analysis(selected_files_cpu, output_suffix)
-                    analyses_run = True
-                else:
-                    print("⚠️  No CPU files found in the given range.")
-                    
-                if selected_files_memory:
-                    run_memory_analysis(selected_files_memory, output_suffix)
-                    analyses_run = True
-                else:
-                    print("⚠️  No Memory files found in the given range.")
-                    
-                if selected_files_vmstat:
-                    run_vmstat_analysis(selected_files_vmstat, output_suffix)
-                    analyses_run = True
-                else:
-                    print("⚠️  No VMStat files found in the given range.")
-                    
-                if selected_files_cpu:
-                    run_dstate_analysis(selected_files_cpu, output_suffix)
-                    analyses_run = True
-                else:
-                    print("⚠️  No OSWtop files found in the given range for D-state analysis.")
-                    
-                if selected_files_disk:
-                    run_disk_analysis(selected_files_disk, output_suffix)
-                    analyses_run = True
-                else:
-                    print("⚠️  No Disk (iostat) files found in the given range.")
-                    
-                if selected_files_netstat:
-                    run_netstat_analysis(selected_files_netstat, output_suffix)
-                    analyses_run = True
-                else:
-                    print("⚠️  No Netstat files found in the given range.")
-                
-                if analyses_run:
-                    print("\n✅ All time-range analyses completed successfully!")
-                else:
-                    print("\n❌ No files found in the given time range for any analysis type.")
+            if analyses_run:
+                      print("\nAll time-range analyses completed successfully!")
+            else:
+                print("\nNo files found in the given time range for any analysis type.")
            
-        elif choice == "9":
+        elif choice == "3":
             print(" Exiting.")
             break
