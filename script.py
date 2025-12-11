@@ -80,92 +80,140 @@ def prepare_all_archives(base_dir, subdirectories):
     print("\nAll archives are ready for analysis.")
 
 
-def run_cpu_analysis(file_list=None, output_suffix=""):
+def run_cpu_analysis(file_list=None, output_suffix="", start_str=None, end_str=None):
     
     output_filename = f"cpu_analysis{output_suffix}.txt"
     output_path = os.path.join(archive_dir, output_filename)
     cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
+    if cpu_cores is None:
+        print("Skipping CPU analysis because CPU core count could not be determined.")
+        return False
     threshold_75 = 0.75 * cpu_cores
 
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
+        if start_str and end_str:
+            print(f"========== Custom Time Range Analysis ==========")
+            print(f"Time Range: From {start_str} to {end_str}")
+            print(f"Format: yy.mm.dd.hhmm\n")
         process_oswtop_files(oswtop_dir, cpu_cores, threshold_75, file_list)
 
     print(f"CPU analysis written to: {output_path}")
     return True
 
 
-def run_memory_analysis(file_list=None, output_suffix=""):
+def run_memory_analysis(file_list=None, output_suffix="", start_str=None, end_str=None):
     
     output_filename = f"memory_analysis{output_suffix}.txt"
     output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
+        if start_str and end_str:
+            print(f"========== Custom Time Range Analysis ==========")
+            print(f"Time Range: From {start_str} to {end_str}")
+            print(f"Format: yy.mm.dd.hhmm\n")
         process_oswmeminfo_files(oswmeminfo_dir, file_list)
 
     print(f"Memory analysis written to: {output_path}")
     return True
 
 
-def run_vmstat_analysis(file_list=None, output_suffix=""):
+def run_vmstat_analysis(file_list=None, output_suffix="", start_str=None, end_str=None):
     
     output_filename = f"vmstat_analysis{output_suffix}.txt"
     output_path = os.path.join(archive_dir, output_filename)
     cpu_cores = get_cpu_cores_from_vmstat(oswvmstat_dir)
+    if cpu_cores is None:
+        print("Skipping VMStat analysis because CPU core count could not be determined.")
+        return False
 
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
+        if start_str and end_str:
+            print(f"========== Custom Time Range Analysis ==========")
+            print(f"Time Range: From {start_str} to {end_str}")
+            print(f"Format: yy.mm.dd.hhmm\n")
         process_oswvmstat_files(oswvmstat_dir, cpu_cores, file_list)
 
     print(f"vmstat analysis written to: {output_path}")
     return True
 
 
-def run_dstate_analysis(file_list=None, output_suffix=""):
+def run_dstate_analysis(file_list=None, output_suffix="", start_str=None, end_str=None):
     
     output_filename = f"dstate_and_high_resource_processes{output_suffix}.txt"
     output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
+        if start_str and end_str:
+            print(f"========== Custom Time Range Analysis ==========")
+            print(f"Time Range: From {start_str} to {end_str}")
+            print(f"Format: yy.mm.dd.hhmm\n")
         analyze_oswtop_data(oswtop_dir, file_list)
 
     print(f"D-state and High Resource Process analysis written to: {output_path}")
     return True
 
 
-def run_disk_analysis(file_list=None, output_suffix=""):
+def run_disk_analysis(file_list=None, output_suffix="", start_str=None, end_str=None):
     
     output_filename = f"disk_and_iowait_details{output_suffix}.txt"
     output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
+        if start_str and end_str:
+            print(f"========== Custom Time Range Analysis ==========")
+            print(f"Time Range: From {start_str} to {end_str}")
+            print(f"Format: yy.mm.dd.hhmm\n")
         analyze_iostat_files(oswiostat_dir, file_list)
 
     print(f"Disk and IOwait analysis written to: {output_path}")
     return True
 
 
-def run_netstat_analysis(file_list=None, output_suffix=""):
+def run_netstat_analysis(file_list=None, output_suffix="", start_str=None, end_str=None):
     
     output_filename = f"netstat_details{output_suffix}.txt"
     output_path = os.path.join(archive_dir, output_filename)
     with open(output_path, "w") as f, contextlib.redirect_stdout(f):
+        if start_str and end_str:
+            print(f"========== Custom Time Range Analysis ==========")
+            print(f"Time Range: From {start_str} to {end_str}")
+            print(f"Format: yy.mm.dd.hhmm\n")
         analyze_netstat_files(oswnetstat_dir, file_list)
 
     print(f"Netstat analysis written to: {output_path}")
     return True
 
 def get_cpu_cores_from_vmstat(vmstat_dir):
-    #unzip_gz_files(vmstat_dir)
+    """
+    Attempt to determine CPU core count from vmstat metadata files.
+    Supports various keys observed across OSWatcher versions:
+      - VCPUS (newer versions)
+      - CPU_CORES
+      - CPU_COUNT (older releases)
+    Returns the first successfully parsed integer value.
+    """
+    possible_keys = ("VCPUS", "CPU_CORES", "CPU_COUNT")
+
     for file in sorted(os.listdir(vmstat_dir)):
-        if file.endswith(".dat"):
-            file_path = os.path.join(vmstat_dir, file)
+        if not file.endswith(".dat"):
+            continue
+        file_path = os.path.join(vmstat_dir, file)
+        try:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
-                    if line.startswith("VCPUS"):
-                        try:
-                            cores = int(line.strip().split()[1])
-                            print(f"\nDetected CPU Cores (VCPUS): {cores}")
-                            return cores
-                        except (IndexError, ValueError):
-                            pass
+                    line = line.strip()
+                    for key in possible_keys:
+                        if line.startswith(key):
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                try:
+                                    cores = int(parts[1])
+                                    print(f"\nDetected CPU Cores ({key}): {cores}")
+                                    return cores
+                                except ValueError:
+                                    continue
+        except FileNotFoundError:
+            continue
+
     print("Could not determine CPU cores from vmstat data.")
-    exit(1)
+    return None
 
 def extract_date_from_filename(filename):
     match = re.search(r"_(\d{2}\.\d{2}\.\d{2})\.\d{4}\.dat$", filename)
@@ -633,98 +681,230 @@ def analyze_iostat_files(directory, file_list=None):
 
 
 def analyze_netstat_files(directory, file_list=None):
-    packet_drop_records = []  # (timestamp, interface, direction, drops)
-    error_records = []        # (timestamp, interface, direction, errors)
+    """
+    Analyze OSWatcher netstat output for network drops and trends.
+
+    Approach (human-style):
+    - Treat each 'zzz ***' block as a snapshot of NIC counters.
+    - For every interface, compute deltas of packets and drops between consecutive snapshots.
+    - Use deltas (not absolute counters) to ignore historic / permanent drops.
+    - For each interval, calculate drop %:
+         drop_pct = delta_drops / (delta_packets + delta_drops) * 100
+      separately for RX and TX.
+    - Highlight intervals and interfaces with the highest drop %,
+      and give a concise per-interface summary.
+    """
+
+    print("\n======== Analyzing Network Drops from OSWatcher netstat ========\n")
 
     files_to_process = file_list if file_list else sorted(os.listdir(directory))
-    
+
+    # Per-interval events: (timestamp, iface, direction, drop_pct, drops, packets)
+    interval_events = []
+    # Per-interface aggregate stats
+    iface_stats = {}  # iface -> dict
+
+    # Previous snapshot cumulative counters per interface
+    prev = {}  # iface -> {rx_pkts, rx_drops, tx_pkts, tx_drops}
+
+    def update_iface_stats(iface, direction, drop_pct, drops, packets):
+        stats = iface_stats.setdefault(iface, {
+            "total_rx_drops": 0,
+            "total_tx_drops": 0,
+            "total_rx_packets": 0,
+            "total_tx_packets": 0,
+            "worst_rx_pct": 0.0,
+            "worst_rx_ts": None,
+            "worst_tx_pct": 0.0,
+            "worst_tx_ts": None,
+        })
+
+        if direction == "RX":
+            stats["total_rx_drops"] += drops
+            stats["total_rx_packets"] += packets
+            if drop_pct > stats["worst_rx_pct"]:
+                stats["worst_rx_pct"] = drop_pct
+                stats["worst_rx_ts"] = current_ts
+        else:
+            stats["total_tx_drops"] += drops
+            stats["total_tx_packets"] += packets
+            if drop_pct > stats["worst_tx_pct"]:
+                stats["worst_tx_pct"] = drop_pct
+                stats["worst_tx_ts"] = current_ts
+
     for filename in files_to_process:
         if not filename.endswith(".dat"):
             continue
 
         filepath = os.path.join(directory, filename)
         with open(filepath, "r") as f:
-            timestamp = None
-            current_interface = None
-            rx_line = None
+            lines = f.readlines()
 
-            for line in f:
-                line = line.strip()
+        current_ts = None
+        # Temporary snapshot for this timestamp: iface -> cumulative counters
+        snapshot = {}
+        current_iface = None
 
-                # Extract timestamp
-                if line.startswith("zzz") or line.startswith("***"):
-                    timestamp = line.split("***")[-1].strip()
-                    current_interface = None
-                    rx_line = None
+        i = 0
+        while i < len(lines):
+            line = lines[i].rstrip("\n")
+
+            # New timestamp block
+            if line.startswith("zzz") or line.startswith("***"):
+                # Process previous completed snapshot before starting new one
+                if current_ts and snapshot:
+                    for iface, vals in snapshot.items():
+                        if iface == "lo":
+                            # Skip loopback for drop analysis
+                            continue
+                        old = prev.get(iface)
+                        if old:
+                            # Compute deltas
+                            d_rx_pkts = vals["rx_pkts"] - old["rx_pkts"]
+                            d_rx_drops = vals["rx_drops"] - old["rx_drops"]
+                            d_tx_pkts = vals["tx_pkts"] - old["tx_pkts"]
+                            d_tx_drops = vals["tx_drops"] - old["tx_drops"]
+
+                            # Ignore counter resets or negative jumps
+                            if d_rx_pkts >= 0 and d_rx_drops >= 0:
+                                total_rx = d_rx_pkts + d_rx_drops
+                                if total_rx > 0 and d_rx_drops > 0:
+                                    rx_pct = (d_rx_drops / total_rx) * 100.0
+                                    interval_events.append((current_ts, iface, "RX", rx_pct, d_rx_drops, d_rx_pkts))
+                                    update_iface_stats(iface, "RX", rx_pct, d_rx_drops, d_rx_pkts)
+
+                            if d_tx_pkts >= 0 and d_tx_drops >= 0:
+                                total_tx = d_tx_pkts + d_tx_drops
+                                if total_tx > 0 and d_tx_drops > 0:
+                                    tx_pct = (d_tx_drops / total_tx) * 100.0
+                                    interval_events.append((current_ts, iface, "TX", tx_pct, d_tx_drops, d_tx_pkts))
+                                    update_iface_stats(iface, "TX", tx_pct, d_tx_drops, d_tx_pkts)
+
+                        # Store latest snapshot as previous
+                        prev[iface] = vals
+
+                # Start new snapshot
+                # Example: "zzz ***Sat Nov 22 04:00:07 CST 2025"
+                if "***" in line:
+                    current_ts = line.split("***", 1)[1].strip()
+                else:
+                    current_ts = line.split("zzz", 1)[1].strip()
+                snapshot = {}
+                current_iface = None
+                i += 1
+                continue
+
+            # Ignore until we have a timestamp
+            if not current_ts:
+                i += 1
+                continue
+
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#kernel"):
+                i += 1
+                continue
+
+            # Interface line: "2: enp1s0: ..."
+            m = re.match(r"^\d+:\s+([^:]+):", stripped)
+            if m:
+                current_iface = m.group(1).split()[0]
+                # Initialize snapshot record if needed
+                if current_iface not in snapshot:
+                    snapshot[current_iface] = {"rx_pkts": 0, "rx_drops": 0, "tx_pkts": 0, "tx_drops": 0}
+                i += 1
+                continue
+
+            # RX line header
+            if stripped.startswith("RX:") and current_iface:
+                # Next line holds the numbers
+                if i + 1 < len(lines):
+                    data = lines[i + 1].strip().split()
+                    if len(data) >= 4:
+                        # bytes packets errors dropped ...
+                        try:
+                            rx_packets = int(data[1])
+                            rx_drops = int(data[3])
+                            snapshot[current_iface]["rx_pkts"] = rx_packets
+                            snapshot[current_iface]["rx_drops"] = rx_drops
+                        except ValueError:
+                            pass
+                    i += 2
                     continue
 
-                if not timestamp or line.startswith("#kernel"):
+            # TX line header
+            if stripped.startswith("TX:") and current_iface:
+                if i + 1 < len(lines):
+                    data = lines[i + 1].strip().split()
+                    if len(data) >= 4:
+                        try:
+                            tx_packets = int(data[1])
+                            tx_drops = int(data[3])
+                            snapshot[current_iface]["tx_pkts"] = tx_packets
+                            snapshot[current_iface]["tx_drops"] = tx_drops
+                        except ValueError:
+                            pass
+                    i += 2
                     continue
 
-                if re.match(r"^\d+:\s+\S+:", line):
-                    current_interface = line.split(":")[1].split("<")[0].strip()
+            i += 1
+
+        # End-of-file: process last snapshot for this file
+        if current_ts and snapshot:
+            for iface, vals in snapshot.items():
+                if iface == "lo":
                     continue
+                old = prev.get(iface)
+                if old:
+                    d_rx_pkts = vals["rx_pkts"] - old["rx_pkts"]
+                    d_rx_drops = vals["rx_drops"] - old["rx_drops"]
+                    d_tx_pkts = vals["tx_pkts"] - old["tx_pkts"]
+                    d_tx_drops = vals["tx_drops"] - old["tx_drops"]
 
-                # RX
-                if line.startswith("RX:"):
-                    rx_line = next(f).strip()
-                    try:
-                        rx_parts = rx_line.split()
-                        rx_errors = float(rx_parts[2])
-                        rx_drops = float(rx_parts[3])
-                        if rx_drops > 0:
-                            packet_drop_records.append((timestamp, current_interface, "RX", rx_drops))
-                        if rx_errors > 0:
-                            error_records.append((timestamp, current_interface, "RX", rx_errors))
-                    except (ValueError, IndexError):
-                        continue
-                    continue
+                    if d_rx_pkts >= 0 and d_rx_drops >= 0:
+                        total_rx = d_rx_pkts + d_rx_drops
+                        if total_rx > 0 and d_rx_drops > 0:
+                            rx_pct = (d_rx_drops / total_rx) * 100.0
+                            interval_events.append((current_ts, iface, "RX", rx_pct, d_rx_drops, d_rx_pkts))
+                            update_iface_stats(iface, "RX", rx_pct, d_rx_drops, d_rx_pkts)
 
-                # TX
-                if line.startswith("TX:"):
-                    tx_line = next(f).strip()
-                    try:
-                        tx_parts = tx_line.split()
-                        tx_errors = float(tx_parts[2])
-                        tx_drops = float(tx_parts[3])
-                        if tx_drops > 0:
-                            packet_drop_records.append((timestamp, current_interface, "TX", tx_drops))
-                        if tx_errors > 0:
-                            error_records.append((timestamp, current_interface, "TX", tx_errors))
-                    except (ValueError, IndexError):
-                        continue
+                    if d_tx_pkts >= 0 and d_tx_drops >= 0:
+                        total_tx = d_tx_pkts + d_tx_drops
+                        if total_tx > 0 and d_tx_drops > 0:
+                            tx_pct = (d_tx_drops / total_tx) * 100.0
+                            interval_events.append((current_ts, iface, "TX", tx_pct, d_tx_drops, d_tx_pkts))
+                            update_iface_stats(iface, "TX", tx_pct, d_tx_drops, d_tx_pkts)
 
-    # ---------- DROP ANALYSIS ----------
-    print("\n Top 10 Packet Drops (All):")
-    if packet_drop_records:
-        for ts, iface, direction, drops in sorted(packet_drop_records, key=lambda x: x[3], reverse=True)[:10]:
-            print(f"{ts} - Interface: {iface} [{direction}], Drops: {drops:.0f}")
-    else:
-        print("No packet drops recorded.")
+                prev[iface] = vals
 
-    print("\n Top 10 Unique Packet Drop Values:")
-    unique_drops = {}
-    for ts, iface, direction, drops in packet_drop_records:
-        if drops not in unique_drops:
-            unique_drops[drops] = (ts, iface, direction, drops)
-    for drops, (ts, iface, direction, _) in sorted(unique_drops.items(), key=lambda x: x[0], reverse=True)[:10]:
-        print(f"{ts} - Interface: {iface} [{direction}], Drops: {drops:.0f}")
+    # ---------- Reporting ----------
 
-    # ---------- ERROR ANALYSIS ----------
-    print("\n Top 10 Packet Errors (All):")
-    if error_records:
-        for ts, iface, direction, errors in sorted(error_records, key=lambda x: x[3], reverse=True)[:10]:
-            print(f"{ts} - Interface: {iface} [{direction}], Errors: {errors:.0f}")
-    else:
-        print("No packet errors recorded.")
+    if not interval_events:
+        print("No packet drops detected between snapshots (all deltas are zero).")
+        return
 
-    print("\n Top 10 Unique Packet Error Values:")
-    unique_errors = {}
-    for ts, iface, direction, errors in error_records:
-        if errors not in unique_errors:
-            unique_errors[errors] = (ts, iface, direction, errors)
-    for errors, (ts, iface, direction, _) in sorted(unique_errors.items(), key=lambda x: x[0], reverse=True)[:10]:
-        print(f"{ts} - Interface: {iface} [{direction}], Errors: {errors:.0f}")
+    # 1) Top intervals by drop percentage (RX + TX together) without discarding low-traffic intervals
+    print("Top 20 intervals by packet drop percentage (RX/TX combined):")
+    for ts, iface, direction, pct, drops, pkts in sorted(interval_events, key=lambda x: x[3], reverse=True)[:20]:
+        print(f"{ts} - {iface} [{direction}] Drop%: {pct:.4f}%  ({drops} packet drops out of {pkts} packets)")
+
+    # 2) Per-interface summary
+    print("\nPer-interface drop summary:")
+    for iface, stats in sorted(iface_stats.items()):
+        total_rx = stats["total_rx_packets"] + stats["total_rx_drops"]
+        total_tx = stats["total_tx_packets"] + stats["total_tx_drops"]
+        agg_rx_pct = (stats["total_rx_drops"] / total_rx * 100.0) if total_rx > 0 else 0.0
+        agg_tx_pct = (stats["total_tx_drops"] / total_tx * 100.0) if total_tx > 0 else 0.0
+
+        print(f"\nInterface: {iface}")
+        print(f"  Aggregate RX drops: {stats['total_rx_drops']} over {stats['total_rx_packets']} packets "
+              f"({agg_rx_pct:.5f}% overall)")
+        if stats["worst_rx_ts"]:
+            print(f"  Worst RX interval: {stats['worst_rx_ts']}  ({stats['worst_rx_pct']:.5f}% drop)")
+
+        print(f"  Aggregate TX drops: {stats['total_tx_drops']} over {stats['total_tx_packets']} packets "
+              f"({agg_tx_pct:.5f}% overall)")
+        if stats["worst_tx_ts"]:
+            print(f"  Worst TX interval: {stats['worst_tx_ts']}  ({stats['worst_tx_pct']:.5f}% drop)")
 
 if __name__ == "__main__":
     archive_dir = get_oswarchive_path()
@@ -784,37 +964,37 @@ if __name__ == "__main__":
             analyses_run = False
                     
             if selected_files_cpu:
-                 run_cpu_analysis(selected_files_cpu, output_suffix)
+                 run_cpu_analysis(selected_files_cpu, output_suffix, start_str, end_str)
                  analyses_run = True
             else:
                 print("No CPU files found in the given range.")
                         
             if selected_files_memory:
-                 run_memory_analysis(selected_files_memory, output_suffix)
+                 run_memory_analysis(selected_files_memory, output_suffix, start_str, end_str)
                  analyses_run = True
             else:
                  print("No Memory files found in the given range.")
                         
             if selected_files_vmstat:
-                 run_vmstat_analysis(selected_files_vmstat, output_suffix)
+                 run_vmstat_analysis(selected_files_vmstat, output_suffix, start_str, end_str)
                  analyses_run = True
             else:
                  print("No VMStat files found in the given range.")
                         
             if selected_files_cpu:
-                     run_dstate_analysis(selected_files_cpu, output_suffix)
+                     run_dstate_analysis(selected_files_cpu, output_suffix, start_str, end_str)
                      analyses_run = True
             else:
                 print("No OSWtop files found in the given range for D-state analysis.")
                         
             if selected_files_disk:
-                        run_disk_analysis(selected_files_disk, output_suffix)
+                        run_disk_analysis(selected_files_disk, output_suffix, start_str, end_str)
                         analyses_run = True
             else:
                  print("No Disk (iostat) files found in the given range.")
                         
             if selected_files_netstat:
-                      run_netstat_analysis(selected_files_netstat, output_suffix)
+                      run_netstat_analysis(selected_files_netstat, output_suffix, start_str, end_str)
                       analyses_run = True
             else:
                  print("No Netstat files found in the given range.")
@@ -827,3 +1007,4 @@ if __name__ == "__main__":
         elif choice == "3":
             print(" Exiting.")
             break
+
