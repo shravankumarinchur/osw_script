@@ -608,6 +608,8 @@ def analyze_oswtop_data(oswtop_dir, file_list=None):
 def analyze_iostat_files(directory, file_list=None):
     iowait_records = []  # To store tuples (timestamp, iowait)
     high_util_disks = []  # To store tuples (timestamp, disk, read_MBps, write_MBps, util%)
+    r_await_records = []  # To store tuples (timestamp, device, r_await, avg_q_sz, read_MBps, util, iowait)
+    w_await_records = []  # To store tuples (timestamp, device, w_await, avg_q_sz, write_MBps, util, iowait)
     
     def kb_to_mb(kb):
         return kb / 1024.0
@@ -621,11 +623,13 @@ def analyze_iostat_files(directory, file_list=None):
         with open(filepath, 'r') as f:
             timestamp = None
             header = None
+            current_iowait = 0.0  # Track iowait for current timestamp
             for line in f:
                 line = line.strip()
                 # Extract timestamp
                 if line.startswith('zzz') or line.startswith('***'):
                     timestamp = line.split('***')[-1].strip()
+                    current_iowait = 0.0  # Reset iowait for new timestamp
                     continue
                 # Handle avg-cpu section
                 if line.startswith('avg-cpu:'):
@@ -634,6 +638,7 @@ def analyze_iostat_files(directory, file_list=None):
                         parts = cpu_line.split()
                         if len(parts) >= 4:
                             iowait = float(parts[3])
+                            current_iowait = iowait  # Store iowait for this timestamp
                             iowait_records.append((timestamp, iowait))
                     except StopIteration:
                         continue
@@ -656,33 +661,87 @@ def analyze_iostat_files(directory, file_list=None):
                         write_kBps_idx = header.index('wkB/s') if 'wkB/s' in header else -1
                         util_idx = header.index('%util') if '%util' in header else -1
                         
+                        # Find indices for r_await, w_await, and average queue size
+                        r_await_idx = header.index('r_await') if 'r_await' in header else -1
+                        w_await_idx = header.index('w_await') if 'w_await' in header else -1
+                        # Handle both avgqu-sz (format A) and aqu-sz (format B)
+                        avg_q_sz_idx = -1
+                        if 'avgqu-sz' in header:
+                            avg_q_sz_idx = header.index('avgqu-sz')
+                        elif 'aqu-sz' in header:
+                            avg_q_sz_idx = header.index('aqu-sz')
+                        
                         if read_kBps_idx == -1 or write_kBps_idx == -1 or util_idx == -1:
                             continue
                             
                         read_kBps = float(parts[read_kBps_idx])
                         write_kBps = float(parts[write_kBps_idx])
                         util = float(parts[util_idx])
-                    except (ValueError, IndexError):
-                        continue
-                    if util > 50.0:
                         read_MBps = kb_to_mb(read_kBps)
                         write_MBps = kb_to_mb(write_kBps)
-                        high_util_disks.append((timestamp, device, read_MBps, write_MBps, util))
+                        
+                        # Collect r_await data if available
+                        if r_await_idx != -1 and len(parts) > r_await_idx:
+                            try:
+                                r_await = float(parts[r_await_idx])
+                                avg_q_sz = float(parts[avg_q_sz_idx]) if avg_q_sz_idx != -1 and len(parts) > avg_q_sz_idx else 0.0
+                                if r_await > 0:
+                                    r_await_records.append((timestamp, device, r_await, avg_q_sz, read_MBps, util, current_iowait))
+                            except (ValueError, IndexError):
+                                pass
+                        
+                        # Collect w_await data if available
+                        if w_await_idx != -1 and len(parts) > w_await_idx:
+                            try:
+                                w_await = float(parts[w_await_idx])
+                                avg_q_sz = float(parts[avg_q_sz_idx]) if avg_q_sz_idx != -1 and len(parts) > avg_q_sz_idx else 0.0
+                                if w_await > 0:
+                                    w_await_records.append((timestamp, device, w_await, avg_q_sz, write_MBps, util, current_iowait))
+                            except (ValueError, IndexError):
+                                pass
+                        
+                        # High utilization tracking (threshold > 75%)
+                        if util >= 75.0:
+                            high_util_disks.append((timestamp, device, read_MBps, write_MBps, util))
+                    except (ValueError, IndexError):
+                        continue
     
-    # Print top 20 iowait values
+    # 1) Print top 30 iowait values
     print("Top 30 highest iowait values:")
     for ts, io in sorted(iowait_records, key=lambda x: x[1], reverse=True)[:30]:
         print(f"{ts} - iowait: {io:.2f}%")
     
-    # Print high-utilization disks
-    print("\nDisks with utilization > 50%:")
-    for ts, dev, r_mb, w_mb, util in high_util_disks:
-        print(f"{ts} - Device: {dev}, Read: {r_mb:.2f} MB/s, Write: {w_mb:.2f} MB/s, Utilization: {util:.2f}%")
+    # 2) Print top 10 r_await
+    if r_await_records:
+        print("\n==Top 10 r_await==")
+        for ts, device, r_await, avg_q_sz, read_MBps, util, iowait in sorted(r_await_records, key=lambda x: x[2], reverse=True)[:10]:
+            print(f"{ts} Device: {device}, r_await: {r_await:.2f} ms, avg queuesize: {avg_q_sz:.2f}, Read: {read_MBps:.2f} MB/s, Utilization: {util:.2f}%, iowait: {iowait:.2f}%")
+    else:
+        print("\n==Top 10 r_await==")
+        print("No r_await data found in iostat output.")
+    
+    # 3) Print top 10 w_await
+    if w_await_records:
+        print("\n==Top 10 w_await==")
+        for ts, device, w_await, avg_q_sz, write_MBps, util, iowait in sorted(w_await_records, key=lambda x: x[2], reverse=True)[:10]:
+            print(f"{ts} Device: {device}, w_await: {w_await:.2f} ms, avg queuesize: {avg_q_sz:.2f}, Write: {write_MBps:.2f} MB/s, Utilization: {util:.2f}%, iowait: {iowait:.2f}%")
+    else:
+        print("\n==Top 10 w_await==")
+        print("No w_await data found in iostat output.")
+    
+    # 4) Print high-utilization disks (threshold changed to 75%)
+    print("\nDisks with utilization > 75%:")
+    if high_util_disks:
+        for ts, dev, r_mb, w_mb, util in sorted(high_util_disks, key=lambda x: x[4], reverse=True):
+            print(f"{ts} - Device: {dev}, Read: {r_mb:.2f} MB/s, Write: {w_mb:.2f} MB/s, Utilization: {util:.2f}%")
+    else:
+        print("No disks found with utilization > 75%.")
 
 
 def analyze_netstat_files(directory, file_list=None):
     """
     Analyze OSWatcher netstat output for network drops and trends.
+    Supports both newer OSWbb v9.0 format (RX:/TX: headers) and older v7.x format (Kernel Interface table).
 
     Approach (human-style):
     - Treat each 'zzz ***' block as a snapshot of NIC counters.
@@ -732,6 +791,49 @@ def analyze_netstat_files(directory, file_list=None):
                 stats["worst_tx_pct"] = drop_pct
                 stats["worst_tx_ts"] = current_ts
 
+    def process_snapshot(ts, snap):
+        """Process a completed snapshot and compute deltas."""
+        for iface, vals in snap.items():
+            if iface == "lo" or iface.endswith(":") or "no statistics" in str(vals):
+                # Skip loopback, aliases, and entries with no stats
+                continue
+            old = prev.get(iface)
+            if old:
+                # Compute deltas
+                d_rx_pkts = vals["rx_pkts"] - old["rx_pkts"]
+                d_rx_drops = vals["rx_drops"] - old["rx_drops"]
+                d_tx_pkts = vals["tx_pkts"] - old["tx_pkts"]
+                d_tx_drops = vals["tx_drops"] - old["tx_drops"]
+
+                # Ignore counter resets or negative jumps
+                if d_rx_pkts >= 0 and d_rx_drops >= 0:
+                    # Calculate drop % as: drops / successful_packets
+                    # This matches the manual calculation where drop% = (drops_delta) / (packets_delta)
+                    if d_rx_pkts > 0 and d_rx_drops > 0:
+                        rx_pct = (d_rx_drops / d_rx_pkts) * 100.0
+                        interval_events.append((ts, iface, "RX", rx_pct, d_rx_drops, d_rx_pkts))
+                        update_iface_stats(iface, "RX", rx_pct, d_rx_drops, d_rx_pkts)
+                    elif d_rx_drops > 0:
+                        # If all packets were dropped (successful = 0, drops > 0), show 100%
+                        rx_pct = 100.0
+                        interval_events.append((ts, iface, "RX", rx_pct, d_rx_drops, 0))
+                        update_iface_stats(iface, "RX", rx_pct, d_rx_drops, 0)
+
+                if d_tx_pkts >= 0 and d_tx_drops >= 0:
+                    # Calculate drop % as: drops / successful_packets
+                    if d_tx_pkts > 0 and d_tx_drops > 0:
+                        tx_pct = (d_tx_drops / d_tx_pkts) * 100.0
+                        interval_events.append((ts, iface, "TX", tx_pct, d_tx_drops, d_tx_pkts))
+                        update_iface_stats(iface, "TX", tx_pct, d_tx_drops, d_tx_pkts)
+                    elif d_tx_drops > 0:
+                        # If all packets were dropped (successful = 0, drops > 0), show 100%
+                        tx_pct = 100.0
+                        interval_events.append((ts, iface, "TX", tx_pct, d_tx_drops, 0))
+                        update_iface_stats(iface, "TX", tx_pct, d_tx_drops, 0)
+
+            # Store latest snapshot as previous
+            prev[iface] = vals.copy()
+
     for filename in files_to_process:
         if not filename.endswith(".dat"):
             continue
@@ -741,56 +843,33 @@ def analyze_netstat_files(directory, file_list=None):
             lines = f.readlines()
 
         current_ts = None
-        # Temporary snapshot for this timestamp: iface -> cumulative counters
         snapshot = {}
         current_iface = None
+        format_detected = None  # "new" (RX:/TX:) or "old" (Kernel Interface table)
+        in_kernel_table = False
+        kernel_table_header_seen = False
 
         i = 0
         while i < len(lines):
             line = lines[i].rstrip("\n")
+            stripped = line.strip()
 
             # New timestamp block
             if line.startswith("zzz") or line.startswith("***"):
                 # Process previous completed snapshot before starting new one
                 if current_ts and snapshot:
-                    for iface, vals in snapshot.items():
-                        if iface == "lo":
-                            # Skip loopback for drop analysis
-                            continue
-                        old = prev.get(iface)
-                        if old:
-                            # Compute deltas
-                            d_rx_pkts = vals["rx_pkts"] - old["rx_pkts"]
-                            d_rx_drops = vals["rx_drops"] - old["rx_drops"]
-                            d_tx_pkts = vals["tx_pkts"] - old["tx_pkts"]
-                            d_tx_drops = vals["tx_drops"] - old["tx_drops"]
-
-                            # Ignore counter resets or negative jumps
-                            if d_rx_pkts >= 0 and d_rx_drops >= 0:
-                                total_rx = d_rx_pkts + d_rx_drops
-                                if total_rx > 0 and d_rx_drops > 0:
-                                    rx_pct = (d_rx_drops / total_rx) * 100.0
-                                    interval_events.append((current_ts, iface, "RX", rx_pct, d_rx_drops, d_rx_pkts))
-                                    update_iface_stats(iface, "RX", rx_pct, d_rx_drops, d_rx_pkts)
-
-                            if d_tx_pkts >= 0 and d_tx_drops >= 0:
-                                total_tx = d_tx_pkts + d_tx_drops
-                                if total_tx > 0 and d_tx_drops > 0:
-                                    tx_pct = (d_tx_drops / total_tx) * 100.0
-                                    interval_events.append((current_ts, iface, "TX", tx_pct, d_tx_drops, d_tx_pkts))
-                                    update_iface_stats(iface, "TX", tx_pct, d_tx_drops, d_tx_pkts)
-
-                        # Store latest snapshot as previous
-                        prev[iface] = vals
+                    process_snapshot(current_ts, snapshot)
 
                 # Start new snapshot
-                # Example: "zzz ***Sat Nov 22 04:00:07 CST 2025"
                 if "***" in line:
                     current_ts = line.split("***", 1)[1].strip()
                 else:
                     current_ts = line.split("zzz", 1)[1].strip()
                 snapshot = {}
                 current_iface = None
+                format_detected = None
+                in_kernel_table = False
+                kernel_table_header_seen = False
                 i += 1
                 continue
 
@@ -799,82 +878,117 @@ def analyze_netstat_files(directory, file_list=None):
                 i += 1
                 continue
 
-            stripped = line.strip()
+            # Detect format: check for "Kernel Interface table" (older format)
+            if "Kernel Interface table" in stripped or "Iface" in stripped and "RX-OK" in stripped:
+                format_detected = "old"
+                in_kernel_table = True
+                kernel_table_header_seen = True
+                # Parse header to find column indices
+                header_parts = stripped.split()
+                try:
+                    rx_ok_idx = header_parts.index("RX-OK")
+                    rx_drp_idx = header_parts.index("RX-DRP")
+                    tx_ok_idx = header_parts.index("TX-OK")
+                    tx_drp_idx = header_parts.index("TX-DRP")
+                except ValueError:
+                    # Header format unexpected, skip this block
+                    in_kernel_table = False
+                i += 1
+                continue
+
+            # Older format: Parse table rows
+            if format_detected == "old" and in_kernel_table and kernel_table_header_seen:
+                if not stripped or stripped.startswith("Ip:") or stripped.startswith("#"):
+                    in_kernel_table = False
+                    i += 1
+                    continue
+                
+                # Parse interface row: "bond0      1500   0 691683440      0 248823267      0 805183108      0      0      0 BMmRU"
+                parts = stripped.split()
+                if len(parts) >= max(rx_ok_idx, rx_drp_idx, tx_ok_idx, tx_drp_idx) + 1:
+                    try:
+                        iface_name = parts[0]
+                        # Skip aliases (e.g., bond0:2, bond0:3)
+                        if ":" in iface_name and iface_name.split(":")[1].isdigit():
+                            i += 1
+                            continue
+                        
+                        rx_packets = int(parts[rx_ok_idx])
+                        rx_drops = int(parts[rx_drp_idx])
+                        tx_packets = int(parts[tx_ok_idx])
+                        tx_drops = int(parts[tx_drp_idx])
+                        
+                        if iface_name not in snapshot:
+                            snapshot[iface_name] = {"rx_pkts": 0, "rx_drops": 0, "tx_pkts": 0, "tx_drops": 0}
+                        
+                        snapshot[iface_name]["rx_pkts"] = rx_packets
+                        snapshot[iface_name]["rx_drops"] = rx_drops
+                        snapshot[iface_name]["tx_pkts"] = tx_packets
+                        snapshot[iface_name]["tx_drops"] = tx_drops
+                    except (ValueError, IndexError):
+                        pass
+                i += 1
+                continue
+
+            # Newer format detection: look for interface lines with "X: iface_name:"
+            if format_detected is None:
+                m = re.match(r"^\d+:\s+([^:]+):", stripped)
+                if m:
+                    format_detected = "new"
+
+            # Newer format: Interface line: "2: enp1s0: ..."
+            if format_detected == "new":
+                m = re.match(r"^\d+:\s+([^:]+):", stripped)
+                if m:
+                    current_iface = m.group(1).split()[0]
+                    # Initialize snapshot record if needed
+                    if current_iface not in snapshot:
+                        snapshot[current_iface] = {"rx_pkts": 0, "rx_drops": 0, "tx_pkts": 0, "tx_drops": 0}
+                    i += 1
+                    continue
+
+                # RX line header
+                if stripped.startswith("RX:") and current_iface:
+                    # Next line holds the numbers
+                    if i + 1 < len(lines):
+                        data = lines[i + 1].strip().split()
+                        if len(data) >= 4:
+                            # bytes packets errors dropped ...
+                            try:
+                                rx_packets = int(data[1])
+                                rx_drops = int(data[3])
+                                snapshot[current_iface]["rx_pkts"] = rx_packets
+                                snapshot[current_iface]["rx_drops"] = rx_drops
+                            except ValueError:
+                                pass
+                        i += 2
+                        continue
+
+                # TX line header
+                if stripped.startswith("TX:") and current_iface:
+                    if i + 1 < len(lines):
+                        data = lines[i + 1].strip().split()
+                        if len(data) >= 4:
+                            try:
+                                tx_packets = int(data[1])
+                                tx_drops = int(data[3])
+                                snapshot[current_iface]["tx_pkts"] = tx_packets
+                                snapshot[current_iface]["tx_drops"] = tx_drops
+                            except ValueError:
+                                pass
+                        i += 2
+                        continue
+
+            # Skip other lines
             if not stripped or stripped.startswith("#kernel"):
                 i += 1
                 continue
-
-            # Interface line: "2: enp1s0: ..."
-            m = re.match(r"^\d+:\s+([^:]+):", stripped)
-            if m:
-                current_iface = m.group(1).split()[0]
-                # Initialize snapshot record if needed
-                if current_iface not in snapshot:
-                    snapshot[current_iface] = {"rx_pkts": 0, "rx_drops": 0, "tx_pkts": 0, "tx_drops": 0}
-                i += 1
-                continue
-
-            # RX line header
-            if stripped.startswith("RX:") and current_iface:
-                # Next line holds the numbers
-                if i + 1 < len(lines):
-                    data = lines[i + 1].strip().split()
-                    if len(data) >= 4:
-                        # bytes packets errors dropped ...
-                        try:
-                            rx_packets = int(data[1])
-                            rx_drops = int(data[3])
-                            snapshot[current_iface]["rx_pkts"] = rx_packets
-                            snapshot[current_iface]["rx_drops"] = rx_drops
-                        except ValueError:
-                            pass
-                    i += 2
-                    continue
-
-            # TX line header
-            if stripped.startswith("TX:") and current_iface:
-                if i + 1 < len(lines):
-                    data = lines[i + 1].strip().split()
-                    if len(data) >= 4:
-                        try:
-                            tx_packets = int(data[1])
-                            tx_drops = int(data[3])
-                            snapshot[current_iface]["tx_pkts"] = tx_packets
-                            snapshot[current_iface]["tx_drops"] = tx_drops
-                        except ValueError:
-                            pass
-                    i += 2
-                    continue
 
             i += 1
 
         # End-of-file: process last snapshot for this file
         if current_ts and snapshot:
-            for iface, vals in snapshot.items():
-                if iface == "lo":
-                    continue
-                old = prev.get(iface)
-                if old:
-                    d_rx_pkts = vals["rx_pkts"] - old["rx_pkts"]
-                    d_rx_drops = vals["rx_drops"] - old["rx_drops"]
-                    d_tx_pkts = vals["tx_pkts"] - old["tx_pkts"]
-                    d_tx_drops = vals["tx_drops"] - old["tx_drops"]
-
-                    if d_rx_pkts >= 0 and d_rx_drops >= 0:
-                        total_rx = d_rx_pkts + d_rx_drops
-                        if total_rx > 0 and d_rx_drops > 0:
-                            rx_pct = (d_rx_drops / total_rx) * 100.0
-                            interval_events.append((current_ts, iface, "RX", rx_pct, d_rx_drops, d_rx_pkts))
-                            update_iface_stats(iface, "RX", rx_pct, d_rx_drops, d_rx_pkts)
-
-                    if d_tx_pkts >= 0 and d_tx_drops >= 0:
-                        total_tx = d_tx_pkts + d_tx_drops
-                        if total_tx > 0 and d_tx_drops > 0:
-                            tx_pct = (d_tx_drops / total_tx) * 100.0
-                            interval_events.append((current_ts, iface, "TX", tx_pct, d_tx_drops, d_tx_pkts))
-                            update_iface_stats(iface, "TX", tx_pct, d_tx_drops, d_tx_pkts)
-
-                prev[iface] = vals
+            process_snapshot(current_ts, snapshot)
 
     # ---------- Reporting ----------
 
@@ -890,10 +1004,9 @@ def analyze_netstat_files(directory, file_list=None):
     # 2) Per-interface summary
     print("\nPer-interface drop summary:")
     for iface, stats in sorted(iface_stats.items()):
-        total_rx = stats["total_rx_packets"] + stats["total_rx_drops"]
-        total_tx = stats["total_tx_packets"] + stats["total_tx_drops"]
-        agg_rx_pct = (stats["total_rx_drops"] / total_rx * 100.0) if total_rx > 0 else 0.0
-        agg_tx_pct = (stats["total_tx_drops"] / total_tx * 100.0) if total_tx > 0 else 0.0
+        # Calculate aggregate drop % as: total_drops / total_successful_packets
+        agg_rx_pct = (stats["total_rx_drops"] / stats["total_rx_packets"] * 100.0) if stats["total_rx_packets"] > 0 else (100.0 if stats["total_rx_drops"] > 0 else 0.0)
+        agg_tx_pct = (stats["total_tx_drops"] / stats["total_tx_packets"] * 100.0) if stats["total_tx_packets"] > 0 else (100.0 if stats["total_tx_drops"] > 0 else 0.0)
 
         print(f"\nInterface: {iface}")
         print(f"  Aggregate RX drops: {stats['total_rx_drops']} over {stats['total_rx_packets']} packets "
@@ -1007,4 +1120,3 @@ if __name__ == "__main__":
         elif choice == "3":
             print(" Exiting.")
             break
-
