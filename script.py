@@ -421,6 +421,13 @@ def process_oswmeminfo_files(meminfo_dir, file_list=None):
     found_above_75 = False
 
     print("\n======== Analyzing Memory Usage above 75% =========\n")
+    print(
+    "\nMemory calculation logic:\n"
+    "---------------------------"
+    "  Free Memory = MemFree + Buffers + Cached\n"
+    "  Used Memory = MemTotal - (MemFree + Buffers + Cached)\n"
+    "  Used % = (Used Memory / MemTotal) * 100\n"
+    )
 
     # Either analyze all files or only the filtered ones
     #if file_list:
