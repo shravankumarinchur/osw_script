@@ -423,7 +423,7 @@ def process_oswmeminfo_files(meminfo_dir, file_list=None):
     print("\n======== Analyzing Memory Usage above 75% =========\n")
     print(
     "\nMemory calculation logic:\n"
-    "---------------------------"
+    "---------------------------\n"
     "  Free Memory = MemFree + Buffers + Cached\n"
     "  Used Memory = MemTotal - (MemFree + Buffers + Cached)\n"
     "  Used % = (Used Memory / MemTotal) * 100\n"
